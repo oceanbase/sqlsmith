@@ -19,15 +19,13 @@ prod::prod(struct prod *parent)
 
 void prod::indent(std::ostream &out)
 {
-  out << std::endl;
-  for (int i = 0; i < level; i++)
-    out << "  ";
+    out <<" ";
 }
 
 void prod::retry()
 {
   impedance::retry(this);
-  if (retries++ <= retry_limit)
+  if (retries++ <= retry_limit && level < 20)
     return;
   
   impedance::limit(this);

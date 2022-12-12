@@ -32,23 +32,13 @@ optional:
 - SQLite3
 - monetdb_mapi
 
-** Building on Debian
+** Building on Centos
 
-: apt-get install build-essential autoconf autoconf-archive libpqxx-dev libboost-regex-dev libsqlite3-dev
+after clone the code
+
 : cd sqlsmith
-: autoreconf -i # Avoid when building from a release tarball
-: ./configure
-: make
-
-** Building on OSX
-
-In order to build on Mac OSX, assuming you use Homebrew, run the following
-
-: brew install libpqxx automake libtool autoconf autoconf-archive pkg-config
-: cd sqlsmith
-: autoreconf -i # Avoid when building from a release tarball
-: ./configure
-: make
+: chmod +x build.sh
+: ./build.sh
 
 ** Usage
 

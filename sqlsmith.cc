@@ -1,6 +1,7 @@
 #include "config.h"
 
 #include <iostream>
+#include <fstream>
 #include <chrono>
 
 #ifndef HAVE_BOOST_REGEX
@@ -14,6 +15,7 @@ using boost::regex_match;
 
 #include <thread>
 #include <typeinfo>
+#include <ctime>
 
 #include "random.hh"
 #include "grammar.hh"
@@ -33,6 +35,8 @@ using boost::regex_match;
 #ifdef HAVE_MONETDB
 #include "monetdb.hh"
 #endif
+
+#include "mysql.hh"
 
 #include "postgres.hh"
 
@@ -57,12 +61,38 @@ extern "C" void cerr_log_handler(int)
   exit(1);
 }
 
+string convert_time(int duration)
+{
+  int hour = 0, minute = 0, second = 0;
+  while(true){
+    if(duration >= 3600){
+      hour += 1;
+      duration -= 3600;
+    }
+    else if(duration >= 60){
+      minute += 1;
+      duration -= 60;
+    }
+    else{
+      second = duration;
+      break;
+    }
+  }
+  string ans = to_string(hour) + "小时" + to_string(minute) + "分" + to_string(second) + "秒";
+  return ans;
+}
+
 int main(int argc, char *argv[])
 {
   cerr << PACKAGE_NAME " " GITREV << endl;
 
+  time_t start_time = time(0);  
+  std::map<pair<int, string>, long> bugs;
+  std::map<pair<int, string>, vector<string>> sql_arr;
+  long bugs_amount = 0;
+
   map<string,string> options;
-  regex optregex("--(help|log-to|verbose|target|sqlite|monetdb|version|dump-all-graphs|dump-all-queries|seed|dry-run|max-queries|rng-state|exclude-catalog)(?:=((?:.|\n)*))?");
+  regex optregex("--(help|log-to|verbose|target|sqlite|monetdb|mysql|version|dump-all-graphs|dump-all-queries|seed|dry-run|max-queries|rng-state|exclude-catalog)(?:=((?:.|\n)*))?");
   
   for(char **opt = argv+1 ;opt < argv+argc; opt++) {
     smatch match;
@@ -84,6 +114,7 @@ int main(int argc, char *argv[])
 #ifdef HAVE_MONETDB
       "    --monetdb=connstr    MonetDB database to send queries to" <<endl <<
 #endif
+      "    --mysql=URI    	 MySQL database to send queries to" <<endl <<
       "    --log-to=connstr     log errors to postgres database" << endl <<
       "    --seed=int           seed RNG with specified int instead of PID" << endl <<
       "    --dump-all-queries   print queries as they are generated" << endl <<
@@ -118,6 +149,9 @@ int main(int argc, char *argv[])
 	cerr << "Sorry, " PACKAGE_NAME " was compiled without MonetDB support." << endl;
 	return 1;
 #endif
+			}
+	  	else if(options.count("mysql")) {
+	schema = make_shared<schema_mysql>(options["mysql"], options.count("exclude-catalog"));
       }
       else
 	schema = make_shared<schema_pqxx>(options["target"], options.count("exclude-catalog"));
@@ -186,6 +220,9 @@ int main(int argc, char *argv[])
 	cerr << "Sorry, " PACKAGE_NAME " was compiled without MonetDB support." << endl;
 	return 1;
 #endif
+			}
+      else if(options.count("mysql")) {
+	dut = make_shared<dut_mysql>(options["mysql"]);
       }
       else
 	dut = make_shared<dut_libpq>(options["target"]);
@@ -199,6 +236,26 @@ int main(int argc, char *argv[])
 		&& (++queries_generated > stol(options["max-queries"]))) {
 	      if (global_cerr_logger)
 		global_cerr_logger->report();
+	      
+              cerr << "The number of bugs found in this execution is " << bugs_amount << endl;
+	      cerr << "number" << "\t" <<  "err_no" << "\t" << "type of error" << endl;
+	      for (auto bug : bugs)
+  		cerr << bug.second << "\t" << bug.first.first << "\t" << bug.first.second << endl;
+	      ofstream outfile;
+	      outfile.open("bug_log.txt");
+	      outfile << "err_no" << "\t" << "err_info" << "\t" << "sql_info" << endl;
+	      for(auto error : sql_arr){
+		     for(auto sql_info : error.second){
+			    outfile << error.first.first << "\t" << error.first.second << "\t";
+			    outfile << sql_info << endl << endl;
+		    }
+		    outfile << endl << endl;
+		}
+	      outfile.close();
+
+              time_t end_time = time(0);
+              int duration = static_cast<int>(end_time - start_time);
+              cerr << "本次测试结束，累计耗时" << convert_time(duration) << endl;
 	      return 0;
 	    }
 	    
@@ -207,6 +264,16 @@ int main(int argc, char *argv[])
 
 	    for (auto l : loggers)
 	      l->generated(*gen);
+
+            if(global_cerr_logger && (10*global_cerr_logger->columns-1) ==
+                global_cerr_logger->queries%(10*global_cerr_logger->columns)){
+              time_t end_time = time(0);
+              long target = stol(options["max-queries"]);
+              double duration = static_cast<double>(end_time - start_time);
+              double pred_time = duration/queries_generated * (target - queries_generated);
+              cerr << "本次测试已运行" << convert_time((int)duration) << ",";
+              cerr << "预计还需运行" << convert_time((int)pred_time) << endl;
+            }            
 	  
 	    /* Generate SQL from AST */
 	    ostringstream s;
@@ -230,6 +297,21 @@ int main(int argc, char *argv[])
 		throw;
 	      }
 	    }
+	    catch(const std::runtime_error &e){
+		  string err_msg = e.what();
+                  int index1 = err_msg.find_first_of("::");
+                  int index2 = err_msg.find_last_of("::") - 1;
+                  int err_no = stoi(err_msg.substr(0, index1));
+                  string err_info = err_msg.substr(index1+2, index2-index1-2);
+                  string sql_info = err_msg.substr(index2+2);
+                  bugs[make_pair(err_no, err_info)]++;
+                  bugs_amount++;
+                  sql_arr[make_pair(err_no, err_info)].push_back(sql_info);
+                  cerr << err_info  << endl;
+		  if(err_no == 2013 || err_no == 2006){
+		    dut = make_shared<dut_mysql>(options["mysql"]);
+		}
+	    }
 	  }
 	}
 	catch (const dut::broken &e) {
@@ -240,6 +322,26 @@ int main(int argc, char *argv[])
     }
   catch (const exception &e) {
     cerr << e.what() << endl;
+    cerr << "Disconnected from server for unknown reason!" << endl;
+    cerr << "The number of bugs found in this execution is " << bugs_amount << endl;
+    cerr << "number" << "\t" <<  "err_no" << "\t" << "type of error" << endl;
+    for (auto bug : bugs)
+      cerr << bug.second << "\t" << bug.first.first << "\t" << bug.first.second << endl;
+    ofstream outfile;
+    outfile.open("bug_log.txt");
+    outfile << "err_no" << "\t" << "err_info" << "\t" << "sql_info" << endl;
+    for(auto error : sql_arr){
+           for(auto sql_info : error.second){
+                  outfile << error.first.first << "\t" << error.first.second << "\t";
+                  outfile << sql_info << endl << endl;
+           }
+           outfile << endl << endl;
+      }
+    outfile.close();
+    
+    time_t end_time = time(0);
+    int duration = static_cast<int>(end_time - start_time);
+    cerr << "At the end of this test, the accumulated time is " << convert_time(duration) << endl;
     return 1;
   }
 }

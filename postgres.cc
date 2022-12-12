@@ -30,7 +30,7 @@ bool pg_type::consistent(sqltype *rvalue)
   case 'c': /* composite type */
   case 'd': /* domain */
   case 'r': /* range */
-  case 'm': /* multirange */
+  //case 'm': /* multirange */
   case 'e': /* enum */
     return this == t;
     
@@ -47,8 +47,6 @@ bool pg_type::consistent(sqltype *rvalue)
       return t->typelem_ == InvalidOid;
     } else if (name == "anyrange" || name == "anycompatiblerange") {
       return t->typtype_ == 'r';
-    } else if (name == "anymultirange" || name == "anycompatiblemultirange") {
-      return t->typtype_ == 'm';
     } else if (name == "record") {
       return t->typtype_ == 'c';
     } else if (name == "cstring") {
@@ -114,9 +112,7 @@ schema_pqxx::schema_pqxx(std::string &conninfo, bool no_catalog) : c(conninfo)
 
   cerr << "Loading types...";
 
-  r = w.exec("select case typnamespace when 'pg_catalog'::regnamespace then quote_ident(typname) "
-	     "else format('%I.%I', typnamespace::regnamespace, typname) end, "
-	     "oid, typdelim, typrelid, typelem, typarray, typtype "
+  r = w.exec("select quote_ident(typname), oid, typdelim, typrelid, typelem, typarray, typtype "
 	     "from pg_type ");
   
   for (auto row = r.begin(); row != r.end(); ++row) {
@@ -288,11 +284,7 @@ schema_pqxx::schema_pqxx(std::string &conninfo, bool no_catalog) : c(conninfo)
     }
   }
   cerr << "done." << endl;
-#ifdef HAVE_LIBPQXX7
-  c.close();
-#else
   c.disconnect();
-#endif
   generate_indexes();
 }
 
@@ -312,12 +304,9 @@ void dut_libpq::connect(std::string &conninfo)
 	PQfinish(conn);
     }
     conn = PQconnectdb(conninfo.c_str());
-    if (PQstatus(conn) != CONNECTION_OK)
-    {
-	char *errmsg = PQerrorMessage(conn);
-	if (strlen(errmsg))
-	    throw dut::broken(errmsg, "08001");
-    }
+    char *errmsg = PQerrorMessage(conn);
+    if (strlen(errmsg))
+	 throw dut::broken(errmsg, "08001");
 
     command("set statement_timeout to '1s'");
     command("set client_min_messages to 'ERROR';");

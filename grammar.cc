@@ -20,10 +20,10 @@ shared_ptr<table_ref> table_ref::factory(prod *p) {
       if (d6() > 3)
 	return make_shared<joined_table>(p);
     }
-    if (d6() > 3)
+    /*if (d6() > 3)*/
       return make_shared<table_or_query_name>(p);
-    else
-      return make_shared<table_sample>(p);
+    /*else
+      return make_shared<table_sample>(p);*/
   } catch (runtime_error &e) {
     p->retry();
   }
@@ -171,11 +171,11 @@ joined_table::joined_table(prod *p) : table_ref(p) {
 }
 
 void joined_table::out(std::ostream &out) {
-  out << *lhs;
+  out << "(" << *lhs;
   indent(out);
   out << type << " join " << *rhs;
   indent(out);
-  out << "on (" << *condition << ")";
+  out << "on (" << *condition << "))";
 }
 
 void table_subquery::out(std::ostream &out) {
@@ -202,14 +202,14 @@ from_clause::from_clause(prod *p) : prod(p) {
   for (auto r : reflist.back()->refs)
     scope->refs.push_back(&*r);
 
-  while (d6() > 5) {
+  /*while (d6() > 5) {
     // add a lateral subquery
     if (!impedance::matched(typeid(lateral_subquery)))
       break;
     reflist.push_back(make_shared<lateral_subquery>(this));
     for (auto r : reflist.back()->refs)
       scope->refs.push_back(&*r);
-  }
+  }*/
 }
 
 select_list::select_list(prod *p) : prod(p)
@@ -285,20 +285,17 @@ select_for_update::select_for_update(prod *p, struct scope *s, bool lateral)
   : query_spec(p,s,lateral)
 {
   static const char *modes[] = {
-    "update",
-    "share",
-    "no key update",
-    "key share",
+    "update"
   };
 
-  try {
+  /*try {
     for_update_verify v1;
     this->accept(&v1);
 
   } catch (const char* reason) {
     lockmode = 0;
     return;
-  }
+  }*/
   lockmode = modes[d6()%(sizeof(modes)/sizeof(*modes))];
   set_quantifier = ""; // disallow distinct
 }
@@ -440,6 +437,8 @@ update_stmt::update_stmt(prod *p, struct scope *s, table *v)
 void update_stmt::out(std::ostream &out)
 {
   out << "update " << victim->ident() << *set_list;
+  indent(out);
+  out << "where " << *search;
 }
 
 update_returning::update_returning(prod *p, struct scope *s, table *v)
@@ -467,20 +466,20 @@ shared_ptr<prod> statement_factory(struct scope *s)
 {
   try {
     s->new_stmt();
-    if (d42() == 1)
-      return make_shared<merge_stmt>((struct prod *)0, s);
+    /*if (d42() == 1)
+      return make_shared<merge_stmt>((struct prod *)0, s);*/
     if (d42() == 1)
       return make_shared<insert_stmt>((struct prod *)0, s);
     else if (d42() == 1)
-      return make_shared<delete_returning>((struct prod *)0, s);
-    else if (d42() == 1) {
-      return make_shared<upsert_stmt>((struct prod *)0, s);
-    } else if (d42() == 1)
-      return make_shared<update_returning>((struct prod *)0, s);
+      return make_shared<delete_stmt>((struct prod *)0, s);
+    /*else if (d42() == 1) 
+      return make_shared<upsert_stmt>((struct prod *)0, s);*/
+    else if (d42() == 1)
+      return make_shared<update_stmt>((struct prod *)0, s);
     else if (d6() > 4)
       return make_shared<select_for_update>((struct prod *)0, s);
-    else if (d6() > 5)
-      return make_shared<common_table_expression>((struct prod *)0, s);
+    /*else if (d6() > 5)
+      return make_shared<common_table_expression>((struct prod *)0, s);*/
     return make_shared<query_spec>((struct prod *)0, s);
   } catch (runtime_error &e) {
     return statement_factory(s);

@@ -118,7 +118,7 @@ void cerr_logger::error(prod &query, const dut::failure &e)
     cerr << endl;
   }
   getline(err, line);
-  errors[line]++;
+  errors[line.substr(0, 80)]++;
   if (dynamic_cast<const dut::timeout *>(&e))
     cerr << "t";
   else if (dynamic_cast<const dut::syntax *>(&e))

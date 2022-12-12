@@ -14,6 +14,7 @@ if DUT_SQLITE
 DUT += sqlite.cc
 endif
 
+DUT += mysql.cc
 
 sqlsmith_SOURCES = relmodel.cc schema.cc $(DUT)	 			\
     random.cc prod.cc expr.cc grammar.cc log.cc dump.cc impedance.cc	\
@@ -28,18 +29,15 @@ AM_CPPFLAGS = $(BOOST_CPPFLAGS) $(LIBPQXX_CFLAGS) $(POSTGRESQL_CPPFLAGS) $(MONET
 EXTRA_DIST = gitrev.h dump.hh expr.hh grammar.hh log.hh prod.hh		\
     random.hh relmodel.hh schema.hh impedance.hh known.txt known_re.txt log.sql	\
     README.org TODO.org ast.png logo.png dump.xsl util.hh sqlite.hh	\
-    dut.hh postgres.hh monetdb.hh log-v1.0-to-v1.2.sql boring_sqlstates.txt
+    dut.hh postgres.hh monetdb.hh mysql.hh log-v1.0-to-v1.2.sql boring_sqlstates.txt
 
 gitrev.h: $(HEADERS) $(SOURCES)
 	-if git describe --exclude='debian*' --dirty --tags --always > /dev/null ; then \
 	echo "#define GITREV \"$$(git describe --exclude='debian*' --dirty --tags --always)\"" > $@ ;\
-	else \
-	echo "#define GITREV \"unreleased\"" > $@ ;\
 	fi
 
 filterdump:
-	psql -Xc 'copy (select error from known) to stdout' |sort -u > known.txt
-	psql -Xc 'copy (select re from known_re) to stdout' |sort -u > known_re.txt
-	psql -Xc 'copy (select sqlstate from boring_sqlstates) to stdout' |sort -u > boring_sqlstates.txt
+	psql -c 'copy (select error from known) to stdout' smith|sort -u > known.txt
+	psql -c 'copy (select re from known_re) to stdout' smith|sort -u > known_re.txt
 
 .PHONY: filterdump

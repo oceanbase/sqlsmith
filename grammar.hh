@@ -176,12 +176,12 @@ struct modifying_stmt : prod {
 
 struct delete_stmt : modifying_stmt {
   shared_ptr<bool_expr> search;
-  delete_stmt(prod *p, struct scope *s, table *v);
+  delete_stmt(prod *p, struct scope *s, table *v = 0);
   virtual ~delete_stmt() { }
   virtual void out(std::ostream &out) {
     out << "delete from " << victim->ident();
     indent(out);
-    out << "where " << std::endl << *search;
+    out << "where " << *search;
   }
   virtual void accept(prod_visitor *v) {
     v->visit(this);
